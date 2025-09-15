@@ -1,6 +1,6 @@
 # Thesis Publication
 
-## 👂 Repository Structure
+## 📖 Repository Structure
 
 The repository contains experiments on multiple telecom datasets using different **Graph Neural Network (GNN) architectures**:
 
@@ -23,12 +23,6 @@ MV/
 ```
 
 The same structure applies to `PRE/` and `POST/` dataset folders.
-
-Each GNN folder contains:
-
-* Model code and training scripts
-* Evaluation results
-* Logs of experiments
 
 ---
 
