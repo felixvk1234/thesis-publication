@@ -1,0 +1,30 @@
+# Core ML and Deep Learning
+torch>=2.0.0
+torch-geometric>=2.3.0
+numpy>=1.21.0
+pandas>=1.3.0
+scikit-learn>=1.0.0
+
+# Graph Neural Networks
+torch-scatter>=2.1.0
+torch-sparse>=0.6.0
+torch-cluster>=1.6.0
+torch-spline-conv>=1.2.0
+
+# Experiment Tracking
+wandb>=0.15.0
+
+# Graph Processing
+networkx>=2.8.0
+
+# Custom EMP Metrics (you mentioned installing EMP-PY)
+EMP-PY
+
+# Optional but commonly used
+matplotlib>=3.5.0
+seaborn>=0.11.0
+plotly>=5.0.0
+tqdm>=4.62.0
+
+# For reproducibility and environment management
+python-dateutil>=2.8.0
