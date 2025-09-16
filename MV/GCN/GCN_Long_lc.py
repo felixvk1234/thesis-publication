@@ -46,7 +46,7 @@ SWEEP_CONFIG = {
 
 # Configuration
 class Config:
-    DATA_DIR = r"/Users/felixvankerschaver/Downloads/Mobile_Vikings/"
+    DATA_DIR = r"/data/leuven/373/vsc37331/Mobile_Vikings/"
     # Call count edge files
     TRAIN_EDGE_C = "SN_M1t2_c.csv"
     VAL_EDGE_C = "SN_M2t3_c.csv"
