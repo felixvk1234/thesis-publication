@@ -26,6 +26,15 @@ The same structure applies to `PRE/` and `POST/` dataset folders.
 
 ---
 
+## ⚙️ Training Setup
+
+All models are trained using the following setup:
+
+* **Optimizer:** [Adam](https://arxiv.org/abs/1412.6980) — an adaptive learning rate optimizer that combines the advantages of AdaGrad and RMSProp, ensuring efficient and stable convergence.
+* **Loss Function:** **CrossEntropyLoss** — a standard choice for multi-class classification tasks like churn prediction, measuring the difference between predicted probabilities and the true class labels.
+
+---
+
 ## 📈 Evaluation Metrics
 
 Model performance is evaluated using **machine learning metrics** and **business-oriented metrics**.
@@ -40,9 +49,9 @@ Model performance is evaluated using **machine learning metrics** and **business
 
 Lift measures how well the model identifies churners in the top fraction of ranked predictions:
 
-| Metric     | Fraction of top predictions | 
-| ---------- | --------------------------- | 
-| lift\_0005 | 0.05%                       | 
+| Metric     | Fraction of top predictions |
+| ---------- | --------------------------- |
+| lift\_0005 | 0.05%                       |
 | lift\_001  | 0.1%                        |
 | lift\_005  | 0.5%                        |
 | lift\_01   | 1%                          |
