@@ -35,7 +35,7 @@ SWEEP_CONFIG = {
             'values': [1, 3]
         },
         'focal_alpha': {
-            'values': [0.5, 0.75]
+            'values': [0.212]
         },
         'focal_gamma': {
             'values': [1.0, 2.0]
