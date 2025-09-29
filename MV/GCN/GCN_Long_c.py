@@ -493,7 +493,7 @@ class Experiment:
         
         return config_name
 
-    def delete_all_previous_runs(self, project_name="gcn-long"):
+    def delete_all_previous_runs(self, project_name="MV-long-c"):
         """Delete all previous runs in the WandB project before starting new sweep"""
         try:
             print("[Checkpoint] ====== Deleting Previous Runs ======")
@@ -726,10 +726,10 @@ class Experiment:
         print("[Checkpoint] ====== Starting WandB Hyperparameter Tuning ======")
         
         # Delete all previous runs first
-        self.delete_all_previous_runs("gcn-long")
+        self.delete_all_previous_runs("MV-long-c")
         
         # Initialize WandB sweep
-        sweep_id = wandb.sweep(sweep=SWEEP_CONFIG, project="gcn-long-c")
+        sweep_id = wandb.sweep(sweep=SWEEP_CONFIG, project="MV-long-c")
         print(f"[Checkpoint] Created WandB sweep: {sweep_id}")
         
         # Run the sweep agent

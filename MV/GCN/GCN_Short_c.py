@@ -36,10 +36,10 @@ SWEEP_CONFIG = {
             'values': [1, 3]
         },
         'focal_alpha': {
-            'values': [0.212]
+            'values': [0.5, 0.75]
         },
         'focal_gamma': {
-            'values': [1.0, 2.0, 3.0]
+            'values': [1.0, 2.0]
         }
     }
 }
@@ -47,32 +47,20 @@ SWEEP_CONFIG = {
 # Configuration
 class Config:
     DATA_DIR = r"/data/leuven/373/vsc37331/Mobile_Vikings/"
-    # Call count edge files
-    TRAIN_EDGE_C = "SN_M1t2_c.csv"
-    VAL_EDGE_C = "SN_M2t3_c.csv"
-    TEST_EDGE_C = "SN_M3t4_c.csv"
-    # Call duration edge files
-    TRAIN_EDGE_L = "SN_M1t2_l.csv"
-    VAL_EDGE_L = "SN_M2t3_l.csv"
-    TEST_EDGE_L = "SN_M3t4_l.csv"
-    # Other data files
+    TRAIN_EDGE = "SN_M2_c.csv"
     TRAIN_LABEL = "L_M3.csv"
-    TRAIN_RMF = "train_rmf_LT.csv"
+    TRAIN_RMF = "train_rmf.csv"
+    VAL_EDGE = "SN_M3_c.csv"
     VAL_LABEL = "L_M4.csv"
-    VAL_RMF = "val_rmf_LT.csv"
+    VAL_RMF = "val_rmf.csv"
+    TEST_EDGE = "SN_M4_c.csv"
     TEST_LABEL = "L_test.csv"
-    TEST_RMF = "test_rmf_LT.csv"
+    TEST_RMF = "test_rmf.csv"
     DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    LEARNING_RATES = [0.01, 0.001, 0.0001]
-    HIDDEN_CHANNELS = [32, 128, 256]
-    LAYERS = [1, 3]
     PATIENCE = 15
     MAX_EPOCHS = 200
     DROPOUT_RATE = 0.5
     EMBEDDING_DIM = 32
-    # Focal Loss hyperparameters to tune
-    FOCAL_ALPHAS = [0.212]   # Prioritize positive class more
-    FOCAL_GAMMAS = [1.0, 2.0]    # Focus on hard examples more
     CLIP_GRAD_NORM = 1.0
 
 
@@ -137,14 +125,11 @@ class GraphDataProcessor:
             return set()
 
     @staticmethod
-    def remove_nodes_and_create_data(rmf_path, edge_path_c, edge_path_l, label_path, churner_set_m1):
-        """Create PyG data object with dual edge weights (call count and call duration)"""
+    def remove_nodes_and_create_data(rmf_path, edge_path, label_path, churner_set_m1):
         node_df = pd.read_csv(rmf_path)
-        # Load both edge files - one for call count and one for duration
-        edge_df_c = pd.read_csv(edge_path_c)
-        edge_df_l = pd.read_csv(edge_path_l)
+        edge_df = pd.read_csv(edge_path)
         label_df = pd.read_csv(label_path)
-        print(f"[Checkpoint] Loaded RMF, both edge types (c and l), and label data")
+        print(f"[Checkpoint] Loaded RMF, edge, and label data")
 
         print(f"[Checkpoint] Starting remove_nodes_and_create_data")
         
@@ -153,92 +138,61 @@ class GraphDataProcessor:
         index_to_usr = {idx: usr for idx, usr in enumerate(usr_list_old, start=1)}
         print(f"[Checkpoint] Mapped {len(index_to_usr)} node indices to USRs")
 
-        # Step 2: No longer filtering out first month churners
-        print(f"[Checkpoint] Keeping all users including first month churners")
+        # Step 2: Filter out churners from node and label data
+        before_nodes = len(node_df)
+        node_df = node_df[~node_df['USR'].isin(churner_set_m1)].reset_index(drop=True)
+        label_df = label_df[~label_df['USR'].isin(churner_set_m1)].reset_index(drop=True)
+        after_nodes = len(node_df)
+        print(f"[Checkpoint] Removed {before_nodes - after_nodes} churned users from node/label data")
 
-        # Step 3: Map edge lists from index to USR for both edge types
-        edge_df_c['i'] = edge_df_c['i'].map(index_to_usr)
-        edge_df_c['j'] = edge_df_c['j'].map(index_to_usr)
-        edge_df_l['i'] = edge_df_l['i'].map(index_to_usr)
-        edge_df_l['j'] = edge_df_l['j'].map(index_to_usr)
+        # Step 3: Map edge list from index to USR
+        edge_df['i'] = edge_df['i'].map(index_to_usr)
+        edge_df['j'] = edge_df['j'].map(index_to_usr)
 
-        # Step 4: No longer filtering out edges with churners
-        print(f"[Checkpoint] Keeping all edges including those involving first month churners")
+        # Step 4: Filter out edges with churners
+        before_edges = len(edge_df)
+        edge_df = edge_df[~edge_df['i'].isin(churner_set_m1) & ~edge_df['j'].isin(churner_set_m1)]
+        after_edges = len(edge_df)
+        print(f"[Checkpoint] Removed {before_edges - after_edges} edges involving churners")
 
         # Step 5: Map remaining USRs to new 0-based indices
         usr_list_new = node_df['USR'].tolist()
         usr_to_index = {usr: idx for idx, usr in enumerate(usr_list_new)}
-        print(f"[Checkpoint] Created mapping for {len(usr_to_index)} users")
+        print(f"[Checkpoint] Created mapping for {len(usr_to_index)} remaining users")
 
-        # Step 6: Convert edge lists from USR to index and extract edge weights
-        # For call count (c) edges
-        mapped_i_c = edge_df_c['i'].map(usr_to_index)
-        mapped_j_c = edge_df_c['j'].map(usr_to_index)
-        edge_weights_c = edge_df_c['x'].values if 'x' in edge_df_c.columns else np.ones(len(mapped_i_c))
+        # Step 6: Convert edge list from USR to index and extract edge weights
+        mapped_i = edge_df['i'].map(usr_to_index)
+        mapped_j = edge_df['j'].map(usr_to_index)
         
-        # For call duration (l) edges
-        mapped_i_l = edge_df_l['i'].map(usr_to_index)
-        mapped_j_l = edge_df_l['j'].map(usr_to_index)
-        edge_weights_l = edge_df_l['x'].values if 'x' in edge_df_l.columns else np.ones(len(mapped_i_l))
-        
-        print(f"[Checkpoint] Extracted call count weights with min={edge_weights_c.min()}, max={edge_weights_c.max()}")
-        print(f"[Checkpoint] Extracted call duration weights with min={edge_weights_l.min()}, max={edge_weights_l.max()}")
+        # Extract edge weights
+        edge_weights = edge_df['x'].values if 'x' in edge_df.columns else np.ones(len(mapped_i))
+        print(f"[Checkpoint] Extracted edge weights with min={edge_weights.min()}, max={edge_weights.max()}")
 
-        # Filter out any edges with NA mappings in both edge types
-        valid_edges_c = ~(mapped_i_c.isna() | mapped_j_c.isna())
-        mapped_i_c = mapped_i_c[valid_edges_c].values
-        mapped_j_c = mapped_j_c[valid_edges_c].values
-        edge_weights_c = edge_weights_c[valid_edges_c]
-        
-        valid_edges_l = ~(mapped_i_l.isna() | mapped_j_l.isna())
-        mapped_i_l = mapped_i_l[valid_edges_l].values
-        mapped_j_l = mapped_j_l[valid_edges_l].values
-        edge_weights_l = edge_weights_l[valid_edges_l]
+        missing_i = mapped_i.isna().sum()
+        missing_j = mapped_j.isna().sum()
+        print(f"[Checkpoint] Missing i mappings: {missing_i}, Missing j mappings: {missing_j}")
 
-        # Merge edges from both edge types
-        # First, create a dictionary with (i, j) as keys
-        edge_dict = {}
-        
-        # Add call count edges
-        for idx in range(len(mapped_i_c)):
-            i, j = int(mapped_i_c[idx]), int(mapped_j_c[idx])
-            count = float(edge_weights_c[idx])
-            edge_dict[(i, j)] = [count, 0.0]  # [count, duration]
-        
-        # Add or update with call duration edges
-        for idx in range(len(mapped_i_l)):
-            i, j = int(mapped_i_l[idx]), int(mapped_j_l[idx])
-            duration = float(edge_weights_l[idx])
-            if (i, j) in edge_dict:
-                edge_dict[(i, j)][1] = duration
-            else:
-                edge_dict[(i, j)] = [0.0, duration]
-        
-        # Convert merged edges to tensors
-        edge_pairs = list(edge_dict.keys())
-        edge_features = list(edge_dict.values())
-        
-        src_nodes = [pair[0] for pair in edge_pairs]
-        dst_nodes = [pair[1] for pair in edge_pairs]
-        
-        # Create undirected graph by adding reverse edges
-        edge_index_0 = torch.tensor([src_nodes, dst_nodes], dtype=torch.long)
-        edge_index_1 = torch.tensor([dst_nodes, src_nodes], dtype=torch.long)
+        # Filter out any edges with NA mappings
+        valid_edges = ~(mapped_i.isna() | mapped_j.isna())
+        mapped_i = mapped_i[valid_edges].values
+        mapped_j = mapped_j[valid_edges].values
+        edge_weights = edge_weights[valid_edges]
+
+        # Create edge indices and weights for undirected graph
+        edge_index_0 = torch.tensor([mapped_i, mapped_j], dtype=torch.long)
+        edge_index_1 = torch.tensor([mapped_j, mapped_i], dtype=torch.long)
         edge_index = torch.cat([edge_index_0, edge_index_1], dim=1)
         
-        # Create 2D edge attributes (count, duration)
-        edge_attr_0 = torch.tensor(edge_features, dtype=torch.float)
-        # Duplicate the edge features for the reverse edges
-        edge_attr_1 = torch.tensor(edge_features, dtype=torch.float)
-        edge_attr = torch.cat([edge_attr_0, edge_attr_1], dim=0)
+        edge_weight_0 = torch.tensor(edge_weights, dtype=torch.float)
+        edge_weight_1 = torch.tensor(edge_weights, dtype=torch.float)
+        edge_weight = torch.cat([edge_weight_0, edge_weight_1], dim=0)
         
         print(f"[Checkpoint] Created undirected edge index with shape: {edge_index.shape}")
-        print(f"[Checkpoint] Created edge attributes with shape: {edge_attr.shape}")
+        print(f"[Checkpoint] Created edge weights with shape: {edge_weight.shape}")
 
         # Step 7: Prepare node features
         feature_df = node_df.drop(columns=['USR', 'churn'], errors='ignore')
-        # Modified to remove features with '30' and '90' instead of '60' and '90'
-        feature_df = feature_df.drop(columns=[col for col in feature_df.columns if '30' in col or '90' in col])
+        feature_df = feature_df.drop(columns=[col for col in feature_df.columns if '60' in col or '90' in col])
         print(f"[Checkpoint] Remaining feature columns: {list(feature_df.columns)}")
 
         scaler = StandardScaler()
@@ -254,13 +208,13 @@ class GraphDataProcessor:
         data = Data(
             x=x, 
             edge_index=edge_index, 
-            edge_attr=edge_attr,  # 2D edge attributes [count, duration]
+            edge_attr=edge_weight,  # Add edge weights as edge_attr
             y=y, 
             num_nodes=x.shape[0], 
             num_edges=edge_index.shape[1], 
             num_features=x.shape[1]
         )
-        print(f"[Checkpoint] Created Data object with {data.num_nodes} nodes, {data.num_edges} edges, {data.num_features} features, and 2D edge attributes")
+        print(f"[Checkpoint] Created Data object with {data.num_nodes} nodes, {data.num_edges} edges, {data.num_features} features, and edge weights")
 
         return data
 
@@ -285,10 +239,6 @@ class EnhancedGCN(nn.Module):
         self.feature_transform = nn.Linear(input_dim, embedding_dim)
         nn.init.xavier_uniform_(self.feature_transform.weight, gain=0.1)
         
-        # Add edge feature transformation layer for 2D edge features
-        self.edge_transform = nn.Linear(2, 1)  # Transform [count, duration] to a single weight
-        nn.init.xavier_uniform_(self.edge_transform.weight, gain=0.1)
-        
         self.combine = nn.Linear(embedding_dim * 2, hidden_channels)
         nn.init.xavier_uniform_(self.combine.weight, gain=0.1)
         
@@ -310,21 +260,11 @@ class EnhancedGCN(nn.Module):
         total_params = sum(p.numel() for p in self.parameters())
         print(f"[Checkpoint] Total parameters: {total_params}")
 
-    def forward(self, x, edge_index, edge_attr=None):
+    def forward(self, x, edge_index, edge_weight=None):
         # Input validation
         if torch.isnan(x).any():
             print("[Checkpoint] WARNING: NaN detected in input features")
             x = torch.nan_to_num(x, nan=0.0)
-        
-        # Process edge attributes if provided
-        edge_weight = None
-        if edge_attr is not None:
-            # Combine call count and duration into a single edge weight
-            # We can do this using our edge_transform layer or another method
-            edge_weight = self.edge_transform(edge_attr).squeeze(-1)
-            # Normalize edge weights to prevent numerical issues
-            if edge_weight.max() > 1000:
-                edge_weight = edge_weight / edge_weight.max()
             
         node_indices = torch.arange(x.size(0), device=x.device)
         node_emb = self.embedding(node_indices)
@@ -369,13 +309,17 @@ class GCNTrainer:
         edge_index = data.edge_index.to(self.device)
         y = data.y.float().to(self.device)
         
-        # Handle edge attributes
-        edge_attr = None
+        # Ensure edge_attr is properly accessed and handled
+        edge_weight = None
         if hasattr(data, 'edge_attr'):
             if data.edge_attr is not None:
-                edge_attr = data.edge_attr.to(self.device)
+                edge_weight = data.edge_attr.to(self.device)
+                # Normalize edge weights to prevent numerical issues
+                if edge_weight.max() > 1000:
+                    print("[Checkpoint] Normalizing large edge weights")
+                    edge_weight = edge_weight / edge_weight.max()
         
-        out = self.model(x, edge_index, edge_attr)
+        out = self.model(x, edge_index, edge_weight)
         loss = self.criterion(out.squeeze(), y)
         
         if not torch.isfinite(loss).all():
@@ -391,6 +335,7 @@ class GCNTrainer:
         
         return loss.item()
 
+    @torch.no_grad()
     def evaluate(self, data, calculate_emp=False):
         self.model.eval()
         
@@ -399,14 +344,17 @@ class GCNTrainer:
             edge_index = data.edge_index.to(self.device)
             y = data.y.float().to(self.device)
             
-            # Handle edge attributes
-            edge_attr = None
+            # Ensure edge_attr is properly accessed and handled
+            edge_weight = None
             if hasattr(data, 'edge_attr'):
                 if data.edge_attr is not None:
-                    edge_attr = data.edge_attr.to(self.device)
+                    edge_weight = data.edge_attr.to(self.device)
+                    # Normalize edge weights to prevent numerical issues
+                    if edge_weight.max() > 1000:
+                        edge_weight = edge_weight / edge_weight.max()
             
             try:
-                out = self.model(x, edge_index, edge_attr)
+                out = self.model(x, edge_index, edge_weight)
                 loss = self.criterion(out.squeeze(), y)
 
                 # Handle potential NaN/Inf values
@@ -430,7 +378,7 @@ class GCNTrainer:
                 lift_0005 = self.calculate_lift(y_true, probs, 0.005)
                 lift_001 = self.calculate_lift(y_true, probs, 0.01)
                 lift_005 = self.calculate_lift(y_true, probs, 0.05)
-                lift_0001 = self.calculate_lift(y_true, probs, 0.001)
+                lift_01 = self.calculate_lift(y_true, probs, 0.1)
 
                 metrics = {
                     'loss': loss.item(),
@@ -439,7 +387,7 @@ class GCNTrainer:
                     'lift_0005': lift_0005,
                     'lift_001': lift_001,
                     'lift_005': lift_005,
-                    'lift_0001': lift_0001,
+                    'lift_01': lift_01,
                     'probs': probs,
                     'labels': y_true
                 }
@@ -468,7 +416,7 @@ class GCNTrainer:
                     'lift_0005': 1.0,
                     'lift_001': 1.0,
                     'lift_005': 1.0,
-                    'lift_0001': 1.0,
+                    'lift_01': 1.0,
                     'emp': 0.0,
                     'mp': 0.0,
                     'probs': np.array([0.5]),
@@ -501,29 +449,26 @@ class Experiment:
         
         self.churned_users = GraphDataProcessor.load_churned_users()
 
-        print("[Checkpoint] Loading training data with RMF features and dual edge weights")
+        print("[Checkpoint] Loading training data with RMF features")
         self.data_train = GraphDataProcessor.remove_nodes_and_create_data(
-            edge_path_c=Config.TRAIN_EDGE_C,
-            edge_path_l=Config.TRAIN_EDGE_L,
+            edge_path=Config.TRAIN_EDGE, 
             label_path=Config.TRAIN_LABEL,
             rmf_path=Config.TRAIN_RMF,
             churner_set_m1=self.churned_users
         )
         GraphDataProcessor.get_class_distribution(self.data_train)
         
-        print("[Checkpoint] Loading validation data with RMF features and dual edge weights")
+        print("[Checkpoint] Loading validation data with RMF features")
         self.data_val = GraphDataProcessor.remove_nodes_and_create_data(
-            edge_path_c=Config.VAL_EDGE_C,
-            edge_path_l=Config.VAL_EDGE_L,
+            edge_path=Config.VAL_EDGE, 
             label_path=Config.VAL_LABEL,
             rmf_path=Config.VAL_RMF,
             churner_set_m1=self.churned_users
         )
 
-        print("[Checkpoint] Loading test data with RMF features and dual edge weights")
+        print("[Checkpoint] Loading test data with RMF features")
         self.data_test = GraphDataProcessor.remove_nodes_and_create_data(
-            edge_path_c=Config.TEST_EDGE_C,
-            edge_path_l=Config.TEST_EDGE_L,
+            edge_path=Config.TEST_EDGE, 
             label_path=Config.TEST_LABEL,
             rmf_path=Config.TEST_RMF,
             churner_set_m1=self.churned_users
@@ -554,7 +499,7 @@ class Experiment:
         
         return config_name
 
-    def delete_all_previous_runs(self, project_name="MV-long-lc"):
+    def delete_all_previous_runs(self, project_name="MV-short-c"):
         """Delete all previous runs in the WandB project before starting new sweep"""
         try:
             print("[Checkpoint] ====== Deleting Previous Runs ======")
@@ -587,6 +532,21 @@ class Experiment:
         except Exception as e:
             print(f"[Checkpoint] Warning: Error during cleanup: {str(e)}")
             print("[Checkpoint] Continuing with sweep despite cleanup error...")
+
+    def run_hyperparameter_tuning(self):
+        print("[Checkpoint] ====== Starting WandB Hyperparameter Tuning ======")
+        
+        # Delete all previous runs first
+        self.delete_all_previous_runs("MV-short-c")
+        
+        # Initialize WandB sweep
+        sweep_id = wandb.sweep(sweep=SWEEP_CONFIG, project="MV-short-c")
+        print(f"[Checkpoint] Created WandB sweep: {sweep_id}")
+        
+        # Run the sweep agent
+        wandb.agent(sweep_id, function=self.train_model, count=None)
+        
+        return None  # Best model tracking handled by wandb
 
     def train_model(self):
         """Single training run for wandb sweep"""
@@ -649,8 +609,16 @@ class Experiment:
                 if np.isnan(loss):
                     nan_epochs += 1
                     print(f"[Checkpoint] NaN loss detected, nan_epochs={nan_epochs}")
-                    if nan_epochs >= 3:
-                        print("[Checkpoint] Too many NaN epochs, stopping training")
+                    if nan_epochs >= 3:  # Skip this configuration after 3 consecutive NaN epochs
+                        print("[Checkpoint] Too many NaN epochs, ending run")
+                        # Mark run as failed using tags instead of status
+                        try:
+                            if wandb.run and hasattr(wandb.run, 'tags'):
+                                current_tags = list(wandb.run.tags) if wandb.run.tags else []
+                                wandb.run.tags = current_tags + ["failed", "nan_loss"]
+                        except:
+                            pass  # Ignore tag errors
+                        wandb.log({"nan_failure": True, "failure_epoch": epoch}, step=epoch)
                         break
                 else:
                     nan_epochs = 0  # Reset counter on successful epoch
@@ -665,7 +633,7 @@ class Experiment:
                     # Log comprehensive metrics to wandb every 5 epochs
                     log_metrics = {
                         "epoch": epoch,
-                        "config_name": config_name,
+                        "config_name": config_name,  # Include config name in metrics
                         # Training metrics
                         "train_loss_eval": train_metrics['loss'],
                         "train_auc": train_metrics['auc'],
@@ -673,7 +641,7 @@ class Experiment:
                         "train_lift_0005": train_metrics['lift_0005'],
                         "train_lift_001": train_metrics['lift_001'],
                         "train_lift_005": train_metrics['lift_005'],
-                        "train_lift_0001": train_metrics['lift_0001'],
+                        "train_lift_01": train_metrics['lift_01'],
                         # Validation metrics
                         "val_loss": val_metrics['loss'],
                         "val_auc": val_metrics['auc'],
@@ -681,23 +649,52 @@ class Experiment:
                         "val_lift_0005": val_metrics['lift_0005'],
                         "val_lift_001": val_metrics['lift_001'],
                         "val_lift_005": val_metrics['lift_005'],
-                        "val_lift_0001": val_metrics['lift_0001'],
+                        "val_lift_01": val_metrics['lift_01'],
                         "val_emp": val_metrics['emp'],
                         "val_mp": val_metrics['mp'],
-                        # Gap metrics for overfitting detection
+                        # Performance gaps
                         "auc_gap": train_metrics['auc'] - val_metrics['auc'],
                         "auprc_gap": train_metrics['auprc'] - val_metrics['auprc']
                     }
                     wandb.log(log_metrics, step=epoch)
                     
-                    # Early stopping based on validation AUC
+                    # Enhanced logging to console
+                    print(f"\n[Checkpoint] ====== Epoch {epoch} Metrics ======")
+                    print(f"[Checkpoint] Training   - AUC: {train_metrics['auc']:.6f}, AUPRC: {train_metrics['auprc']:.6f}, Loss: {train_metrics['loss']:.6f}")
+                    print(f"[Checkpoint] Validation - AUC: {val_metrics['auc']:.6f}, AUPRC: {val_metrics['auprc']:.6f}, Loss: {val_metrics['loss']:.6f}")
+                    print(f"[Checkpoint] Val Lifts  - @0.5%: {val_metrics['lift_0005']:.3f}, @1%: {val_metrics['lift_001']:.3f}, @5%: {val_metrics['lift_005']:.3f}, @10%: {val_metrics['lift_01']:.3f}")
+                    print(f"[Checkpoint] Val EMP: {val_metrics['emp']:.6f}, MP: {val_metrics['mp']:.6f}")
+                    print(f"[Checkpoint] Gaps       - AUC: {train_metrics['auc'] - val_metrics['auc']:.6f}, AUPRC: {train_metrics['auprc'] - val_metrics['auprc']:.6f}")
+                    
+                    # Early stopping based on AUC
                     if val_metrics['auc'] > current_best_val_auc:
                         current_best_val_auc = val_metrics['auc']
                         epochs_no_improve = 0
+                        # Log best metrics with additional context
+                        wandb.log({
+                            "best_val_auc": current_best_val_auc,
+                            "best_val_auprc": val_metrics['auprc'],
+                            "best_val_emp": val_metrics['emp'],
+                            "best_epoch": epoch
+                        }, step=epoch)
+                        print(f"[Checkpoint] ★ NEW BEST AUC: {current_best_val_auc:.6f} at epoch {epoch}")
                     else:
                         epochs_no_improve += 1
-                        if epochs_no_improve >= Config.PATIENCE // 5:  # Check every 5 epochs
+                        print(f"[Checkpoint] No improvement for {epochs_no_improve}/{Config.PATIENCE} evaluations")
+                        if epochs_no_improve >= Config.PATIENCE // 5:  # Convert patience to evaluation cycles
                             print(f"[Checkpoint] Early stopping at epoch {epoch}")
+                            # Use proper boolean logging instead of status strings
+                            wandb.log({
+                                "early_stopped": True, 
+                                "early_stop_epoch": epoch, 
+                                "final_epochs_no_improve": epochs_no_improve
+                            }, step=epoch)
+                            try:
+                                if wandb.run and hasattr(wandb.run, 'tags'):
+                                    current_tags = list(wandb.run.tags) if wandb.run.tags else []
+                                    wandb.run.tags = current_tags + ["early_stopped"]
+                            except:
+                                pass  # Ignore tag errors
                             break
             
             # Final test evaluation if training was successful
@@ -706,14 +703,13 @@ class Experiment:
                 
                 # Log final test metrics
                 final_metrics = {
-                    "config_name": config_name,
-                    # Final test results
+                    "config_name": config_name,  # Include config name
                     "final_test_auc": test_metrics['auc'],
                     "final_test_auprc": test_metrics['auprc'],
                     "final_test_lift_0005": test_metrics['lift_0005'],
                     "final_test_lift_001": test_metrics['lift_001'],
                     "final_test_lift_005": test_metrics['lift_005'],
-                    "final_test_lift_0001": test_metrics['lift_0001'],
+                    "final_test_lift_01": test_metrics['lift_01'],
                     "final_test_emp": test_metrics['emp'],
                     "final_test_mp": test_metrics['mp'],
                     "training_completed": True
@@ -722,9 +718,10 @@ class Experiment:
                 # Safely add tags
                 try:
                     if wandb.run and hasattr(wandb.run, 'tags'):
-                        wandb.run.tags = ["completed", "success"]
+                        current_tags = list(wandb.run.tags) if wandb.run.tags else []
+                        wandb.run.tags = current_tags + ["completed"]
                 except:
-                    pass  # Ignore tagging errors
+                    pass  # Ignore tag errors
                 
                 print(f"[Checkpoint] Final Test Results:")
                 print(f"[Checkpoint] Test AUC: {test_metrics['auc']:.6f}")
@@ -745,21 +742,6 @@ class Experiment:
             
         finally:
             wandb.finish()
-
-    def run_hyperparameter_tuning(self):
-        print("[Checkpoint] ====== Starting WandB Hyperparameter Tuning ======")
-        
-        # Delete all previous runs first
-        self.delete_all_previous_runs("MV-long-lc")
-        
-        # Initialize WandB sweep
-        sweep_id = wandb.sweep(sweep=SWEEP_CONFIG, project="MV-long-lc")
-        print(f"[Checkpoint] Created WandB sweep: {sweep_id}")
-        
-        # Run the sweep agent
-        wandb.agent(sweep_id, function=self.train_model, count=None)
-        
-        return None  # Best model tracking handled by wandb
 
 if __name__ == "__main__":
     # Set manual seeds for reproducibility
