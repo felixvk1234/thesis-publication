@@ -38,7 +38,7 @@ SWEEP_CONFIG = {
             'values': [0.212]
         },
         'focal_gamma': {
-            'values': [1.0, 2.0]
+            'values': [1.0, 2.0, 3.0]
         }
     }
 }
@@ -347,7 +347,7 @@ class GCNTrainer:
                 lift_0005 = self.calculate_lift(y_true, probs, 0.005)
                 lift_001 = self.calculate_lift(y_true, probs, 0.01)
                 lift_005 = self.calculate_lift(y_true, probs, 0.05)
-                lift_01 = self.calculate_lift(y_true, probs, 0.1)
+                lift_0001 = self.calculate_lift(y_true, probs, 0.001)
 
                 metrics = {
                     'loss': loss.item(),
@@ -356,7 +356,7 @@ class GCNTrainer:
                     'lift_0005': lift_0005,
                     'lift_001': lift_001,
                     'lift_005': lift_005,
-                    'lift_01': lift_01,
+                    'lift_0001': lift_0001,
                     'probs': probs,
                     'labels': y_true
                 }
@@ -385,7 +385,7 @@ class GCNTrainer:
                     'lift_0005': 1.0,
                     'lift_001': 1.0,
                     'lift_005': 1.0,
-                    'lift_01': 1.0,
+                    'lift_0001': 1.0,
                     'emp': 0.0,
                     'mp': 0.0,
                     'probs': np.array([0.5]),
@@ -610,7 +610,7 @@ class Experiment:
                         "train_lift_0005": train_metrics['lift_0005'],
                         "train_lift_001": train_metrics['lift_001'],
                         "train_lift_005": train_metrics['lift_005'],
-                        "train_lift_01": train_metrics['lift_01'],
+                        "train_lift_0001": train_metrics['lift_0001'],
                         # Validation metrics
                         "val_loss": val_metrics['loss'],
                         "val_auc": val_metrics['auc'],
@@ -618,7 +618,7 @@ class Experiment:
                         "val_lift_0005": val_metrics['lift_0005'],
                         "val_lift_001": val_metrics['lift_001'],
                         "val_lift_005": val_metrics['lift_005'],
-                        "val_lift_01": val_metrics['lift_01'],
+                        "val_lift_0001": val_metrics['lift_0001'],
                         "val_emp": val_metrics['emp'],
                         "val_mp": val_metrics['mp'],
                         # Performance gaps
@@ -631,7 +631,7 @@ class Experiment:
                     print(f"\n[Checkpoint] ====== Epoch {epoch} Metrics ======")
                     print(f"[Checkpoint] Training   - AUC: {train_metrics['auc']:.6f}, AUPRC: {train_metrics['auprc']:.6f}, Loss: {train_metrics['loss']:.6f}")
                     print(f"[Checkpoint] Validation - AUC: {val_metrics['auc']:.6f}, AUPRC: {val_metrics['auprc']:.6f}, Loss: {val_metrics['loss']:.6f}")
-                    print(f"[Checkpoint] Val Lifts  - @0.5%: {val_metrics['lift_0005']:.3f}, @1%: {val_metrics['lift_001']:.3f}, @5%: {val_metrics['lift_005']:.3f}, @10%: {val_metrics['lift_01']:.3f}")
+                    print(f"[Checkpoint] Val Lifts  - @0.5%: {val_metrics['lift_0005']:.3f}, @1%: {val_metrics['lift_001']:.3f}, @5%: {val_metrics['lift_005']:.3f}, @0.1%: {val_metrics['lift_0001']:.3f}")
                     print(f"[Checkpoint] Val EMP: {val_metrics['emp']:.6f}, MP: {val_metrics['mp']:.6f}")
                     print(f"[Checkpoint] Gaps       - AUC: {train_metrics['auc'] - val_metrics['auc']:.6f}, AUPRC: {train_metrics['auprc'] - val_metrics['auprc']:.6f}")
                     
@@ -678,7 +678,7 @@ class Experiment:
                     "final_test_lift_0005": test_metrics['lift_0005'],
                     "final_test_lift_001": test_metrics['lift_001'],
                     "final_test_lift_005": test_metrics['lift_005'],
-                    "final_test_lift_01": test_metrics['lift_01'],
+                    "final_test_lift_0001": test_metrics['lift_0001'],
                     "final_test_emp": test_metrics['emp'],
                     "final_test_mp": test_metrics['mp'],
                     "training_completed": True

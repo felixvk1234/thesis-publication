@@ -36,10 +36,10 @@ SWEEP_CONFIG = {
             'values': [1, 3]
         },
         'focal_alpha': {
-            'values': [0.5, 0.75]
+            'values': [0.212]
         },
         'focal_gamma': {
-            'values': [1.0, 2.0]
+            'values': [1.0, 2.0, 3.0]
         }
     }
 }
@@ -65,7 +65,7 @@ class Config:
     DROPOUT_RATE = 0.5
     EMBEDDING_DIM = 32
     # Focal Loss hyperparameters to tune
-    FOCAL_ALPHAS = [0.5, 0.75]   # Prioritize positive class more
+    FOCAL_ALPHAS = [0.212]   # Prioritize positive class more
     FOCAL_GAMMAS = [1.0, 2.0]    # Focus on hard examples more
     CLIP_GRAD_NORM = 1.0
 
@@ -378,7 +378,7 @@ class GCNTrainer:
                 lift_0005 = self.calculate_lift(y_true, probs, 0.005)
                 lift_001 = self.calculate_lift(y_true, probs, 0.01)
                 lift_005 = self.calculate_lift(y_true, probs, 0.05)
-                lift_01 = self.calculate_lift(y_true, probs, 0.1)
+                lift_0001 = self.calculate_lift(y_true, probs, 0.001)
 
                 metrics = {
                     'loss': loss.item(),
@@ -387,7 +387,7 @@ class GCNTrainer:
                     'lift_0005': lift_0005,
                     'lift_001': lift_001,
                     'lift_005': lift_005,
-                    'lift_01': lift_01,
+                    'lift_0001': lift_0001,
                     'probs': probs,
                     'labels': y_true
                 }
@@ -416,7 +416,7 @@ class GCNTrainer:
                     'lift_0005': 1.0,
                     'lift_001': 1.0,
                     'lift_005': 1.0,
-                    'lift_01': 1.0,
+                    'lift_0001': 1.0,
                     'emp': 0.0,
                     'mp': 0.0,
                     'probs': np.array([0.5]),
@@ -618,7 +618,7 @@ class Experiment:
                         "train_lift_0005": train_metrics['lift_0005'],
                         "train_lift_001": train_metrics['lift_001'],
                         "train_lift_005": train_metrics['lift_005'],
-                        "train_lift_01": train_metrics['lift_01'],
+                        "train_lift_0001": train_metrics['lift_0001'],
                         # Validation metrics
                         "val_loss": val_metrics['loss'],
                         "val_auc": val_metrics['auc'],
@@ -626,7 +626,7 @@ class Experiment:
                         "val_lift_0005": val_metrics['lift_0005'],
                         "val_lift_001": val_metrics['lift_001'],
                         "val_lift_005": val_metrics['lift_005'],
-                        "val_lift_01": val_metrics['lift_01'],
+                        "val_lift_0001": val_metrics['lift_0001'],
                         "val_emp": val_metrics['emp'],
                         "val_mp": val_metrics['mp'],
                         # Gap metrics for overfitting detection
@@ -658,7 +658,7 @@ class Experiment:
                     "final_test_lift_0005": test_metrics['lift_0005'],
                     "final_test_lift_001": test_metrics['lift_001'],
                     "final_test_lift_005": test_metrics['lift_005'],
-                    "final_test_lift_01": test_metrics['lift_01'],
+                    "final_test_lift_0001": test_metrics['lift_0001'],
                     "final_test_emp": test_metrics['emp'],
                     "final_test_mp": test_metrics['mp'],
                     "training_completed": True
